@@ -1,7 +1,9 @@
 package org.example.securevault.service;
 
 import org.example.securevault.model.Document;
+import org.example.securevault.model.User;
 import org.example.securevault.repository.DocumentRepository;
+import org.example.securevault.repository.UserRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -11,45 +13,77 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;
+import java.util.Optional;
+import java.util.List;
 
 @Service
 public class DocumentService {
 
-    // Dosyaların kaydedileceği klasör yolu (Proje klasörünün içinde oluşacak)
     private final String UPLOAD_DIR = "uploads/";
-
     private final DocumentRepository documentRepository;
+    private final UserRepository userRepository; // YENİ: User tablosuna erişim lazım
 
-    public DocumentService(DocumentRepository documentRepository) {
+    // Constructor Injection ile UserRepository'yi de alıyoruz
+    public DocumentService(DocumentRepository documentRepository, UserRepository userRepository) {
         this.documentRepository = documentRepository;
+        this.userRepository = userRepository;
     }
 
-    public Document uploadFile(MultipartFile file, String uploaderName) throws IOException {
-        // 1. Klasör yoksa oluştur
+    public Document uploadFile(MultipartFile file, String username) throws IOException {
+        // 1. ÖNCE KULLANICIYI KONTROL ET (Validation)
+        // Eğer kullanıcı yoksa işlem burada durur, hata fırlatır.
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new RuntimeException("Kullanıcı bulunamadı: " + username));
+
+        // 2. Klasör ve Dosya İşlemleri (Aynı kalıyor)
         File directory = new File(UPLOAD_DIR);
         if (!directory.exists()) {
             directory.mkdirs();
         }
 
-        // 2. Dosya ismini al ve çakışmayı önlemek için basit bir işlem yap (Şimdilik orjinal isim)
+        // Benzersiz isim üretmek iyi pratiktir ama şimdilik orjinal kalsın
         String originalFilename = file.getOriginalFilename();
-        // Güvenlik Notu: Burada henüz "Path Traversal" kontrolü yapmıyoruz! (Güvensiz Hal)
-
         String filePath = UPLOAD_DIR + originalFilename;
         Path path = Paths.get(filePath);
-
-        // 3. Dosyayı diske kaydet (byte byte yazar)
         Files.write(path, file.getBytes());
 
-        // 4. Veritabanına kayıt at
+        // 3. Veritabanı Kaydı (GÜNCELLENDİ)
         Document document = new Document();
         document.setFileName(originalFilename);
         document.setFileType(file.getContentType());
         document.setFilePath(filePath);
         document.setUploadDate(LocalDateTime.now());
 
-        // Not: User işlemleri henüz devre dışı, o yüzden owner null kalabilir veya ileride bağlayacağız.
+        document.setOwner(user); // İŞTE KRİTİK NOKTA: Dosyayı gerçek kullanıcıya bağlıyoruz.
 
         return documentRepository.save(document);
+    }
+
+    //: Dosya Bilgisini Getirme (READ)
+    public Document getDocumentById(Long id) {
+        return documentRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Dosya bulunamadı ID: " + id));
+    }
+    // DELETE işlemi: Hem DB'den hem Diskten siler
+    public void deleteDocument(Long id) throws IOException {
+        // 1. Önce dosyayı bul
+        Document document = documentRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Dosya bulunamadı"));
+
+        // 2. Diskteki dosyayı sil (Files.delete)
+        Path path = Paths.get(document.getFilePath());
+        try {
+            Files.deleteIfExists(path);
+        } catch (IOException e) {
+            System.out.println("Dosya diskte bulunamadı ama DB'den silinecek: " + e.getMessage());
+        }
+
+        // 3. Veritabanından sil
+        documentRepository.deleteById(id);
+    }
+
+    // READ (ALL): Tüm dosyaları listeleme (Test için)
+    public List<Document> getAllDocuments() {
+        return documentRepository.findAll();
     }
 }
