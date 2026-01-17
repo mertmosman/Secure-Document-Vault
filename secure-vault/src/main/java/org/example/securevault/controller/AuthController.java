@@ -29,4 +29,20 @@ public class AuthController {
 
         return ResponseEntity.ok("Kullanıcı başarıyla oluşturuldu!");
     }
+    // LOGIN (Basit Kontrol)
+    // Şimdilik Token vermiyoruz, sadece "Giriş Başarılı" diyoruz.
+    @PostMapping("/login")
+    public ResponseEntity<String> login(@RequestBody User loginRequest) {
+        // 1. Kullanıcıyı bul
+        User dbUser = userRepository.findByUsername(loginRequest.getUsername())
+                .orElse(null);
+
+        // 2. Kullanıcı yoksa veya şifre yanlışsa hata dön
+        if (dbUser == null || !dbUser.getPassword().equals(loginRequest.getPassword())) {
+            return ResponseEntity.status(401).body("Giriş Başarısız: Kullanıcı adı veya şifre hatalı!");
+        }
+
+        // 3. Her şey doğruysa
+        return ResponseEntity.ok("Giriş Başarılı! Hoşgeldin " + dbUser.getUsername());
+    }
 }
