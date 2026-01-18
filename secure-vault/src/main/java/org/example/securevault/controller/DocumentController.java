@@ -8,6 +8,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.util.List;
+import java.security.Principal;
 
 @RestController
 @RequestMapping("/api/documents")
@@ -22,11 +23,14 @@ public class DocumentController {
     // CREATE (Upload) - Zaten vardı
     @PostMapping(value = "/upload", consumes = "multipart/form-data")
     public ResponseEntity<String> uploadDocument(@RequestParam("file") MultipartFile file,
-                                                 @RequestParam("username") String username) {
+                                                 Principal principal) { // Spring buraya giriş yapanı doldurur
         try {
-            Document savedDoc = documentService.uploadFile(file, username);
-            return ResponseEntity.ok("Dosya yüklendi. ID: " + savedDoc.getId());
-        } catch (IOException e) {
+            // principal.getName() bize giriş yapmış kullanıcının "username" bilgisini verir.
+            String loggedInUser = principal.getName();
+
+            Document savedDoc = documentService.uploadFile(file, loggedInUser);
+            return ResponseEntity.ok("Dosya yüklendi. Yükleyen: " + loggedInUser + " | ID: " + savedDoc.getId());
+        } catch (Exception e) {
             return ResponseEntity.internalServerError().body("Hata: " + e.getMessage());
         }
     }

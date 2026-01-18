@@ -1,8 +1,10 @@
 package org.example.securevault.controller;
-
+import org.example.securevault.dto.LoginRequest;
+import org.example.securevault.dto.RegisterRequest;
 import org.example.securevault.model.User;
 import org.example.securevault.repository.UserRepository;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -10,39 +12,41 @@ import org.springframework.web.bind.annotation.*;
 public class AuthController {
 
     private final UserRepository userRepository;
+    private final PasswordEncoder passwordEncoder; // SecurityConfig'deki encoder'ı kullanacağız
 
-    public AuthController(UserRepository userRepository) {
+    public AuthController(UserRepository userRepository, PasswordEncoder passwordEncoder) {
         this.userRepository = userRepository;
+        this.passwordEncoder = passwordEncoder;
     }
 
+    // KAYIT OL (DTO kullanıyor: Role var)
     @PostMapping("/register")
-    public ResponseEntity<String> register(@RequestBody User user) {
-        // Basit bir kontrol: Bu kullanıcı adı alınmış mı?
-        if (userRepository.findByUsername(user.getUsername()).isPresent()) {
+    public ResponseEntity<String> register(@RequestBody RegisterRequest request) {
+        if (userRepository.findByUsername(request.getUsername()).isPresent()) {
             return ResponseEntity.badRequest().body("Bu kullanıcı adı zaten alınmış.");
         }
 
-        // ŞİMDİLİK şifreyi düz (plain text) kaydediyoruz.
-        // Güvenlik gününde (Gün 5) buraya şifreleme (BCrypt) ekleyeceğiz.
-        user.setRole("ROLE_USER");
-        userRepository.save(user);
+        User newUser = new User();
+        newUser.setUsername(request.getUsername());
+        // Şifreyi şimdilik olduğu gibi alıyoruz (Gün 5'te hashleyeceğiz)
+        newUser.setPassword(request.getPassword());
+        newUser.setRole(request.getRole()); // Rolü DTO'dan alıp set ediyoruz
 
+        userRepository.save(newUser);
         return ResponseEntity.ok("Kullanıcı başarıyla oluşturuldu!");
     }
-    // LOGIN (Basit Kontrol)
-    // Şimdilik Token vermiyoruz, sadece "Giriş Başarılı" diyoruz.
+
+    // GİRİŞ YAP (DTO kullanıyor: Role YOK)
     @PostMapping("/login")
-    public ResponseEntity<String> login(@RequestBody User loginRequest) {
-        // 1. Kullanıcıyı bul
-        User dbUser = userRepository.findByUsername(loginRequest.getUsername())
+    public ResponseEntity<String> login(@RequestBody LoginRequest request) {
+        User dbUser = userRepository.findByUsername(request.getUsername())
                 .orElse(null);
 
-        // 2. Kullanıcı yoksa veya şifre yanlışsa hata dön
-        if (dbUser == null || !dbUser.getPassword().equals(loginRequest.getPassword())) {
+        // Şifre kontrolü
+        if (dbUser == null || !dbUser.getPassword().equals(request.getPassword())) {
             return ResponseEntity.status(401).body("Giriş Başarısız: Kullanıcı adı veya şifre hatalı!");
         }
 
-        // 3. Her şey doğruysa
         return ResponseEntity.ok("Giriş Başarılı! Hoşgeldin " + dbUser.getUsername());
     }
 }
