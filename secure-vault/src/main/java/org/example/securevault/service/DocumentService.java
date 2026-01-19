@@ -3,8 +3,10 @@ package org.example.securevault.service;
 import org.example.securevault.model.Document;
 import org.example.securevault.model.User;
 import org.example.securevault.repository.DocumentRepository;
-import org.example.securevault.validation.FileValidator;
 import org.example.securevault.repository.UserRepository;
+import org.example.securevault.validation.FileValidator;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.access.prepost.PostAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -14,20 +16,17 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;
-import java.util.Optional;
 import java.util.List;
 
 @Service
 public class DocumentService {
 
-    // Dosyaların kaydedileceği klasör
     private final String UPLOAD_DIR = "uploads/";
 
     private final DocumentRepository documentRepository;
     private final UserRepository userRepository;
-    private final FileValidator fileValidator; // Güvenlik Kontrolü için
+    private final FileValidator fileValidator;
 
-    // Tüm bağımlılıkları (Repositoryler ve Validator) buradan alıyoruz
     public DocumentService(DocumentRepository documentRepository,
                            UserRepository userRepository,
                            FileValidator fileValidator) {
@@ -36,30 +35,24 @@ public class DocumentService {
         this.fileValidator = fileValidator;
     }
 
-    // CREATE: Dosya Yükleme (Güvenli)
+    // CREATE: Dosya Yükleme
     public Document uploadFile(MultipartFile file, String username) throws IOException {
-        // 1. ADIM: GÜVENLİK KONTROLÜ (Apache Tika)
-        // Dosya gerçekten PDF mi? İçeriğine bakılır. Değilse hata fırlatır ve durur.
+        // 1. Güvenlik Kontrolü (Tika & Uzantı)
         fileValidator.validateFile(file);
 
-        // 2. ADIM: Kullanıcıyı Bul
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new RuntimeException("Kullanıcı bulunamadı: " + username));
 
-        // 3. ADIM: Klasör Yoksa Oluştur
         File directory = new File(UPLOAD_DIR);
         if (!directory.exists()) {
             directory.mkdirs();
         }
 
-        // 4. ADIM: Dosyayı Diske Kaydet
         String originalFilename = file.getOriginalFilename();
-        // İpucu: İleride buraya UUID ekleyerek dosya ismini benzersiz yapacağız (tez.pdf -> tez_12345.pdf gibi)
         String filePath = UPLOAD_DIR + originalFilename;
         Path path = Paths.get(filePath);
         Files.write(path, file.getBytes());
 
-        // 5. ADIM: Veritabanına Kaydet
         Document document = new Document();
         document.setFileName(originalFilename);
         document.setFileType(file.getContentType());
@@ -70,32 +63,42 @@ public class DocumentService {
         return documentRepository.save(document);
     }
 
-    // READ (ONE): ID ile dosya getir
+    // READ (ONE): Tek Dosya Getir
+    // GÜVENLİK: Metot çalışır, veriyi çeker ama dönmeden önce sahibini kontrol eder.
+    // Dosyanın sahibi (returnObject.owner.username == authentication.name)
+    // VEYA (||)
+    // İsteyen kişi Admin ise (hasRole('ROLE_ADMIN'))
+    @PostAuthorize("returnObject.owner.username == authentication.name || hasRole('ROLE_ADMIN')")
     public Document getDocumentById(Long id) {
         return documentRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Dosya bulunamadı ID: " + id));
     }
 
-    // READ (ALL): Tüm dosyaları listele
-    public List<Document> getAllDocuments() {
-        return documentRepository.findAll();
+    // READ (ALL): Sadece Kişinin Kendi Dosyaları
+    public List<Document> getAllDocuments(String username) {
+        return documentRepository.findAllByOwner_Username(username);
     }
 
-    // DELETE: Dosyayı hem diskten hem veritabanından sil
-    public void deleteDocument(Long id) throws IOException {
-        // 1. Önce veritabanı kaydını bul
+    // DELETE: Dosya Silme (Güvenli)
+    public void deleteDocument(Long id, String username) throws IOException {
+        // 1. Dosyayı bul
         Document document = documentRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Dosya bulunamadı ID: " + id));
 
-        // 2. Diskteki fiziksel dosyayı sil
+        // 2. GÜVENLİK KONTROLÜ: Silmek isteyen kişi, dosyanın sahibi mi?
+        if (!document.getOwner().getUsername().equals(username)) {
+            throw new AccessDeniedException("Bu dosyayı silme yetkiniz yok! Sadece kendi dosyanızı silebilirsiniz.");
+        }
+
+        // 3. Diskteki dosyayı sil
         Path path = Paths.get(document.getFilePath());
         try {
             Files.deleteIfExists(path);
         } catch (IOException e) {
-            System.out.println("Dosya diskte bulunamadı (zaten silinmiş olabilir), ama DB'den siliniyor.");
+            System.out.println("Dosya diskte bulunamadı, DB temizleniyor.");
         }
 
-        // 3. Veritabanı kaydını sil
+        // 4. Veritabanından sil
         documentRepository.deleteById(id);
     }
 }

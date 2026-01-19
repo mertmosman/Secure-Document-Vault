@@ -1,16 +1,14 @@
-package org.example.securevault.service;
+package org.example.securevault.service; // Paket ismin neyse o kalsın
 
 import org.example.securevault.model.User;
 import org.example.securevault.repository.UserRepository;
 import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.core.userdetails.UserDetailsService; // 1. BU IMPORT ŞART
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
-import org.springframework.stereotype.Service;
+import org.springframework.stereotype.Service; // 2. BU IMPORT ŞART
 
-import java.util.Collections;
-
-@Service
-public class CustomUserDetailsService implements UserDetailsService { // 2. BURASI KRİTİK: implements UserDetailsService
+@Service // <--- 3. İŞTE HATANIN ÇÖZÜMÜ BURASI! (Bu yoksa o hatayı alırsın)
+public class CustomUserDetailsService implements UserDetailsService { // <--- 4. BU DA ŞART
 
     private final UserRepository userRepository;
 
@@ -23,11 +21,10 @@ public class CustomUserDetailsService implements UserDetailsService { // 2. BURA
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new UsernameNotFoundException("Kullanıcı bulunamadı: " + username));
 
-        // UserDetails'e çevirme işlemi
         return org.springframework.security.core.userdetails.User.builder()
                 .username(user.getUsername())
                 .password(user.getPassword())
-                .roles(user.getRole())
+                .roles(user.getRole().replace("ROLE_", "")) // Spring bazen ROLE_ kısmını kendi ekler, temizliyoruz.
                 .build();
     }
 }

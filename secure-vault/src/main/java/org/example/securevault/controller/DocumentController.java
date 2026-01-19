@@ -6,9 +6,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.IOException;
-import java.util.List;
 import java.security.Principal;
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/documents")
@@ -20,41 +19,42 @@ public class DocumentController {
         this.documentService = documentService;
     }
 
-    // CREATE (Upload) - Zaten vardı
+    // UPLOAD: Giriş yapan kişi adına yükler
     @PostMapping(value = "/upload", consumes = "multipart/form-data")
     public ResponseEntity<String> uploadDocument(@RequestParam("file") MultipartFile file,
-                                                 Principal principal) { // Spring buraya giriş yapanı doldurur
+                                                 Principal principal) {
         try {
-            // principal.getName() bize giriş yapmış kullanıcının "username" bilgisini verir.
             String loggedInUser = principal.getName();
-
             Document savedDoc = documentService.uploadFile(file, loggedInUser);
-            return ResponseEntity.ok("Dosya yüklendi. Yükleyen: " + loggedInUser + " | ID: " + savedDoc.getId());
+            return ResponseEntity.ok("Dosya yüklendi. ID: " + savedDoc.getId());
         } catch (Exception e) {
-            return ResponseEntity.internalServerError().body("Hata: " + e.getMessage());
+            return ResponseEntity.internalServerError().body("Yükleme Hatası: " + e.getMessage());
         }
     }
 
-    // READ (ONE) - Zaten vardı
+    // GET (ONE): ID ile getir (Service katmanında @PostAuthorize koruması var)
     @GetMapping("/{id}")
     public ResponseEntity<Document> getDocument(@PathVariable Long id) {
+        // IDOR kontrolü Service içinde yapıldığı için burada ekstra koda gerek yok.
+        // Eğer yetkisiz biri isterse Service otomatik 403 fırlatır.
         return ResponseEntity.ok(documentService.getDocumentById(id));
     }
 
-    // READ (ALL) - YENİ: Hepsini gör
+    // GET (ALL): Sadece giriş yapanın dosyalarını listele
     @GetMapping
-    public ResponseEntity<List<Document>> getAllDocuments() {
-        return ResponseEntity.ok(documentService.getAllDocuments());
+    public ResponseEntity<List<Document>> getAllDocuments(Principal principal) {
+        return ResponseEntity.ok(documentService.getAllDocuments(principal.getName()));
     }
 
-    // DELETE - YENİ: Dosyayı yok et
+    // DELETE: Giriş yapan kişi sadece kendi dosyasını silebilir
     @DeleteMapping("/{id}")
-    public ResponseEntity<String> deleteDocument(@PathVariable Long id) {
+    public ResponseEntity<String> deleteDocument(@PathVariable Long id, Principal principal) {
         try {
-            documentService.deleteDocument(id);
-            return ResponseEntity.ok("Dosya başarıyla silindi (Disk + DB).");
+            documentService.deleteDocument(id, principal.getName());
+            return ResponseEntity.ok("Dosya başarıyla silindi.");
         } catch (Exception e) {
-            return ResponseEntity.internalServerError().body("Silme hatası: " + e.getMessage());
+            // AccessDeniedException servisten gelirse burası yakalar (veya GlobalExceptionHandler)
+            return ResponseEntity.status(403).body("İşlem Başarısız: " + e.getMessage());
         }
     }
 }

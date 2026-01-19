@@ -1,8 +1,12 @@
 package org.example.securevault.repository;
+
 import org.example.securevault.model.Document;
 import org.springframework.data.jpa.repository.JpaRepository;
 import java.util.List;
 
 public interface DocumentRepository extends JpaRepository<Document, Long> {
-    List<Document> findByOwnerId(Long userId); // Bir kullanıcının dosyalarını getirmek için
+
+    // Magic Method: SQL yazmadan isimlendirme kuralıyla filtreleme yapar.
+    // SELECT * FROM documents WHERE owner.username = ?
+    List<Document> findAllByOwner_Username(String username);
 }
