@@ -2,9 +2,13 @@ package org.example.securevault.controller;
 
 import org.example.securevault.model.Document;
 import org.example.securevault.service.DocumentService;
+import org.example.securevault.service.RateLimitingService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.http.HttpStatus;
+import io.github.bucket4j.Bucket;
+import io.github.bucket4j.ConsumptionProbe;
 
 import java.security.Principal;
 import java.util.List;
@@ -14,18 +18,34 @@ import java.util.List;
 public class DocumentController {
 
     private final DocumentService documentService;
+    private final RateLimitingService rateLimitingService; // 1. YENİ SERVİSİ EKLE
 
-    public DocumentController(DocumentService documentService) {
+    // Constructor'ı güncelle
+    public DocumentController(DocumentService documentService, RateLimitingService rateLimitingService) {
         this.documentService = documentService;
+        this.rateLimitingService = rateLimitingService;
     }
 
-    // UPLOAD: Giriş yapan kişi adına yükler
+    // UPLOAD Endpoint - GÜNCELLENDİ
     @PostMapping(value = "/upload", consumes = "multipart/form-data")
     public ResponseEntity<String> uploadDocument(@RequestParam("file") MultipartFile file,
                                                  Principal principal) {
+        String username = principal.getName();
+
+        // --- 2. HIZ SINIRI KONTROLÜ BAŞLANGIÇ ---
+        Bucket bucket = rateLimitingService.resolveBucket(username);
+        ConsumptionProbe probe = bucket.tryConsumeAndReturnRemaining(1); // 1 Jeton harcamayı dene
+
+        if (!probe.isConsumed()) {
+            // Eğer jeton yetmediyse:
+            long waitForRefill = probe.getNanosToWaitForRefill() / 1_000_000_000; // Saniye cinsinden bekleme süresi
+            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS) // 429 Hatası
+                    .body("Çok hızlı işlem yapıyorsunuz! Lütfen " + waitForRefill + " saniye bekleyin.");
+        }
+        // --- HIZ SINIRI KONTROLÜ BİTİŞ ---
+
         try {
-            String loggedInUser = principal.getName();
-            Document savedDoc = documentService.uploadFile(file, loggedInUser);
+            Document savedDoc = documentService.uploadFile(file, username);
             return ResponseEntity.ok("Dosya yüklendi. ID: " + savedDoc.getId());
         } catch (Exception e) {
             return ResponseEntity.internalServerError().body("Yükleme Hatası: " + e.getMessage());
