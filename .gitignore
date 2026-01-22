@@ -1,0 +1,28 @@
+# Derleme çıktıları (Gereksiz yük)
+target/
+*.class
+
+# IntelliJ IDEA dosyaları (Kişisel ayarlar)
+.idea/
+*.iml
+*.iws
+
+# Eclipse dosyaları (Başkası Eclipse kullanıyorsa karışmasın)
+.settings/
+.classpath
+.project
+
+# Maven Wrapper (Bazen yüklenir ama genelde gerek yok)
+.mvn/
+mvnw
+mvnw.cmd
+
+# Sistem dosyaları
+.DS_Store
+Thumbs.db
+
+# Log dosyaları
+*.log
+
+# Docker Environment (Şifreler burada olursa GİZLENMELİ)
+.env
