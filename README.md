@@ -1,90 +1,173 @@
-# 📁 Proje: Secure Document Vault (Güvenli Belge Kasası)
+# 🛡️ Secure Document Vault (Güvenli Belge Kasası)
 
-## Hedef: Spring Boot ile OWASP standartlarına uygun, saldırıya dayanıklı bir REST API geliştirmek.
+![Java](https://img.shields.io/badge/Java-17%2B-orange)
+![Spring Boot](https://img.shields.io/badge/Spring_Boot-4.0.1-green)
+![Security](https://img.shields.io/badge/Spring_Security-6-red)
+![Docker](https://img.shields.io/badge/Docker-Enabled-blue)
+![License](https://img.shields.io/badge/License-MIT-lightgrey)
 
-### 1. Senaryo ve Amaç
-Bir hukuk bürosu, müşterilerine ait çok hassas dava dosyalarını (sözleşmeler, deliller, kimlikler) dijital ortamda saklamak istiyor. Ancak siber saldırıların arttığı bu dönemde, standart bir dosya yükleme sistemi onlar için yeterli değil.
+**Secure Document Vault**, yüksek güvenlik standartlarına (OWASP) uygun olarak geliştirilmiş, siber saldırılara karşı güçlendirilmiş bir dosya depolama ve yönetim REST API'sidir.
 
-Göreviniz: Java ve Spring Boot ekosistemini kullanarak, sadece "çalışan" değil, aynı zamanda siber saldırılara karşı "dirençli" bir REST API geliştirmektir. Bu sistemde kimse başkasının dosyasını görememeli, sunucuya virüslü dosya yüklenememeli ve sistem aşırı isteklerle (DDoS/Brute-Force) çökertilememelidir.
+Bu proje, sadece dosya yüklemeyi değil; **IDOR, DDoS, Brute-Force** ve **Malicious File Upload** gibi yaygın web saldırılarına karşı nasıl savunma yapılacağını göstermek amacıyla tasarlanmıştır.
 
-### 2. Teknik Gereksinimler (Tech Stack)
+---
 
-Dil: Java 17 veya 21 (Virtual Threads desteği için tercih sebebidir)
+## 🚀 Özellikler ve Güvenlik Önlemleri
 
-Framework: Spring Boot 3.2+
+Bu proje, "Security First" (Önce Güvenlik) yaklaşımıyla geliştirilmiştir:
 
-Veritabanı: PostgreSQL
+### 🔐 1. Kimlik ve Erişim Yönetimi (IAM)
+* **JWT (JSON Web Token):** Stateless (durumsuz) kimlik doğrulama.
+* **RBAC (Rol Tabanlı Erişim):** `ADMIN` ve `USER` rolleri ile yetkilendirme.
+* **Password Hashing:** Şifreler veritabanında asla açık tutulmaz (BCrypt/Argon2 kullanımı için altyapı).
 
-Güvenlik: Spring Security 6 (Method Security aktif)
+### 🛡️ 2. Uygulama Güvenliği
+* **IDOR Koruması (Broken Access Control):** Spring Security `@PostAuthorize` kullanılarak, kullanıcıların URL üzerinden ID değiştirip başkasına ait dosyaları görmesi engellenmiştir.
+* **Güvenli Dosya Yükleme:**
+    * **Magic Bytes Kontrolü:** Sadece dosya uzantısına (.pdf) bakılmaz, dosyanın `hex signature` (büyülü baytları) analiz edilerek içeriğin gerçekten PDF olup olmadığı (Apache Tika / Java IO ile) doğrulanır.
+* **Rate Limiting (Hız Sınırlama):** **Bucket4j** kullanılarak Token Bucket algoritması uygulanmıştır. Spam ve DDoS saldırılarına karşı her kullanıcıya belirli bir kota (örn: dakikada 10 istek) tanımlanmıştır.
 
-IO & Validation:
+### 👁️ 3. Gözlemlenebilirlik (Auditing)
+* **AOP (Aspect Oriented Programming):** Sisteme entegre edilen "Gizli Ajan" (AuditLoggingAspect), kritik işlemleri (Dosya Yükleme, Silme) çalışma anında yakalar.
+* **Denetim İzi:** Kimin, hangi IP adresinden, ne zaman, hangi işlemi yaptığı veritabanındaki `audit_logs` tablosuna kaydedilir.
 
-Apache Tika (Dosya tipi analizi için)
+---
 
-Java I/O (Manuel Magic Bytes kontrolü için)
+## 🛠️ Teknoloji Yığını (Tech Stack)
 
-Rate Limiting: Bucket4j
+* **Backend:** Java 17, Spring Boot 4.0.1
+* **Veritabanı:** PostgreSQL 15
+* **Güvenlik:** Spring Security 6, JJWT (0.11.5)
+* **Rate Limiting:** Bucket4j
+* **Dosya Analizi:** Apache Tika Core
+* **API Dokümantasyonu:** SpringDoc OpenAPI (Swagger UI)
+* **DevOps:** Docker, Docker Compose
+* **Test:** JUnit 5, Mockito, Postman
 
-Utility: Lombok, Maven/Gradle
+---
 
-### 3. Fonksiyonel Gereksinimler
+## ⚙️ Kurulum ve Çalıştırma
 
-Auth: Kullanıcılar sisteme kayıt olabilmeli ve Token (JWT) alarak giriş yapabilmelidir.
+Projeyi çalıştırmak için iki yöntem vardır. En kolayı **Docker** kullanmaktır.
 
-Upload: Yetkili kullanıcı sisteme PDF formatında belge yükleyebilmelidir.
+### Yöntem 1: Docker ile (Önerilen) 🐳
+Bilgisayarınızda Docker ve Docker Compose yüklü olmalıdır.
 
-View: Kullanıcı, yüklediği belgenin detaylarını veya içeriğini ID ile sorgulayabilmelidir (GET /api/files/{id}).
+1.  Repoyu klonlayın:
+    ```bash
+    git clone [https://github.com/mertmosman/secure-vault.git](https://github.com/mertmosman/secure-vault.git)
+    cd secure-vault
+    ```
 
-### 4. Güvenli Kodlama Görevleri (Secure Coding Tasks)
+2.  Projeyi paketleyin ve konteynerleri ayağa kaldırın:
+    ```bash
+    # Önce Maven ile build alın (Testleri atlayarak hızlı build)
+    ./mvnw clean package -DskipTests
 
-🛡️ Görev 1: Yetkilendirme Kontrolü (Broken Access Control)
-Problem: Standart bir yazılımda, User A giriş yaptığında, URL'deki ID'yi değiştirerek (/api/files/125) User B'nin dosyasını görüntüleyebilir (IDOR Açığı).
+    # Docker Compose ile başlatın
+    docker-compose up --build
+    ```
 
-Yasak: Service katmanında if (file.getOwner().equals(currentUser)) gibi manuel if-else blokları yazmak yasaktır (Spagetti koda yol açar).
+3.  Uygulama **http://localhost:8081** adresinde çalışmaya başlayacaktır.
 
+### Yöntem 2: Lokal Kurulum (Manuel)
+1.  Bilgisayarınızda **PostgreSQL** kurulu olmalı ve `securevault_db` adında bir veritabanı oluşturulmalıdır.
+2.  `src/main/resources/application.properties` dosyasındaki veritabanı ayarlarını kendi lokal ayarlarınıza göre güncelleyin.
+3.  Uygulamayı çalıştırın:
+    ```bash
+    ./mvnw spring-boot:run
+    ```
 
-🛡️ Görev 2: Gerçek Dosya Tipi Doğrulaması (Malicious File Upload)
-Problem: Saldırganlar, zararli_yazilim.exe dosyasının adını tez_odevi.pdf olarak değiştirip sisteme yükleyebilirler. Sadece dosya uzantısına (.pdf) bakmak yetersizdir.
+---
 
+## 📖 API Dokümantasyonu (Swagger)
 
-🛡️ Görev 3: Hız Sınırlama (Rate Limiting)
-Problem: Bir bot, saniyede 1000 istek göndererek sistemi kilitleyebilir (DoS Saldırısı).
+Uygulama çalıştıktan sonra, tüm endpoint'leri görmek ve test etmek için tarayıcınızdan şu adrese gidin:
 
-Limit aşıldığında sistem veritabanına gitmeden HTTP 429 (Too Many Requests) hatası dönmelidir.
+👉 **http://localhost:8081/swagger-ui/index.html**
+<img width="914" height="927" alt="image" src="https://github.com/user-attachments/assets/a0b05a0d-2f0f-4c81-81a3-16627a0180f4" />
 
-🛡️ Görev 4: Güvenli Hata Yönetimi (Security Misconfiguration) 🆕
-Problem: Sistem hata verdiğinde (örneğin IDOR yakalandığında), Spring Boot varsayılan olarak "Stack Trace" (kodun hangi satırda hata verdiği) bilgisini döner. Bu, saldırganlara sistem hakkında ipucu verir.
+**Temel Endpointler:**
+* `POST /api/auth/register` - Kayıt Ol
+* `POST /api/auth/login` - Giriş Yap (Token Al)
+* `POST /api/documents/upload` - Belge Yükle (Token Gerekli 🔒)
+* `GET /api/documents/{id}` - Belge Görüntüle (Sadece Sahibi Görebilir 🔒)
+* `GET /api/users` - Kullanıcıları Listele (Sadece Admin 🔒)
 
-### 5. Proje Dosya Yapısı Örneği
+---
 ```
-src/main/java/com/projeadı/securevault
+secure-vault/
+├── .mvn/ wrapper/                  # (Maven Wrapper dosyaları)
+├── src/
+│   ├── main/
+│   │   ├── java/
+│   │   │   └── org/example/securevault/
+│   │   │       │
+│   │   │       ├── config/                      # ⚙️ KONFİGÜRASYON
+│   │   │       │   ├── AuditLoggingAspect.java  # (AOP - Gizli Ajan)
+│   │   │       │   ├── DataInitializer.java     # (Başlangıç verileri)
+│   │   │       │   ├── JwtAuthenticationFilter.java
+│   │   │       │   ├── OpenApiConfig.java       # (Swagger Ayarları)
+│   │   │       │   └── SecurityConfig.java      # (Ana Güvenlik Ayarı)
+│   │   │       │
+│   │   │       ├── controller/                  # 🎮 API UÇ NOKTALARI
+│   │   │       │   ├── AuthController.java
+│   │   │       │   ├── DocumentController.java
+│   │   │       │   └── UserController.java
+│   │   │       │
+│   │   │       ├── dto/                         # 📦 VERİ TRANSFER OBJELERİ
+│   │   │       │   ├── AuthResponse.java
+│   │   │       │   ├── LoginRequest.java
+│   │   │       │   └── RegisterRequest.java
+│   │   │       │
+│   │   │       ├── exception/                   # 🚨 HATA YÖNETİMİ (YENİ EKLENDİ)
+│   │   │       │   └── GlobalExceptionHandler.java
+│   │   │       │
+│   │   │       ├── model/                       # 🗄️ VERİTABANI VARLIKLARI
+│   │   │       │   ├── AuditLog.java
+│   │   │       │   ├── Document.java
+│   │   │       │   └── User.java
+│   │   │       │
+│   │   │       ├── repository/                  # 💾 VERİ ERİŞİM KATMANI
+│   │   │       │   ├── AuditLogRepository.java
+│   │   │       │   ├── DocumentRepository.java
+│   │   │       │   └── UserRepository.java
+│   │   │       │
+│   │   │       ├── service/                     # 🧠 İŞ MANTIĞI
+│   │   │       │   ├── CustomUserDetailsService.java
+│   │   │       │   ├── DocumentService.java
+│   │   │       │   ├── JwtService.java
+│   │   │       │   ├── RateLimitingService.java
+│   │   │       │   └── UserService.java
+│   │   │       │
+│   │   │       ├── validation/                  # ✅ DOĞRULAMA
+│   │   │       │   └── FileValidator.java       # (Magic Bytes/Tika kontrolü)
+│   │   │       │
+│   │   │       └── SecureVaultApplication.java  # 🚀 BAŞLATICI
+│   │   │
+│   │   └── resources/
+│   │       └── application.properties           # 🔧 AYAR DOSYASI
+│   │
+│   └── test/
+│       └── java/
+│           └── org/example/securevault/
+│               ├── service/
+│               │   └── JwtServiceTest.java      # 🧪 BİRİM TESTİ
+│               └── SecureVaultApplicationTests.java
 │
-├── config
-│   ├── SecurityConfig.java      (Spring Security Ayarları)
-│   └── BucketConfig.java        (Rate Limit Ayarları)
-│
-├── controller
-│   ├── AuthController.java
-│   └── DocumentController.java
-│
-├── exception
-│   ├── GlobalExceptionHandler.java  (Görev 4: @ControllerAdvice burada)
-│   └── FileStorageException.java
-│
-├── filter
-│   └── RateLimitFilter.java     (Görev 3: Bucket4j burada)
-│
-├── model (entity)
-│   ├── User.java
-│   └── Document.java
-│
-├── repository
-│   └── DocumentRepository.java
-│
-├── service
-│   ├── DocumentService.java     (Görev 1: @PostAuthorize burada)
-│   └── validation
-│       └── FileValidator.java   (Görev 2: Magic Bytes/Tika burada)
-│
-└── SecureVaultApplication.java
+├── target/                     # (Derleme çıktıları - dokunma)
+├── uploads/                    # (Lokal test için dosya yükleme alanı - opsiyonel)
+├── .gitignore                  # (Git ayar dosyası)
+├── docker-compose.yml          # 🐳 DOCKER ORKESTRA (Ana dizinde olmalı!)
+├── Dockerfile                  # 🐳 DOCKER İMAJ (Ana dizinde olmalı!)
+├── mvnw                        # (Maven çalıştırıcı)
+├── mvnw.cmd                    # (Maven çalıştırıcı - Windows)
+├── pom.xml                     # 📋 KÜTÜPHANELER
+└── README.md                   # 📖 PROJE DOKÜMANTASYONU
 ```
+## 🧪 Test Süreci
+
+### Unit Testler
+Servis katmanının (özellikle JWT ve yetkilendirme mantığının) doğruluğu JUnit testleri ile güvence altına alınmıştır.
+```bash
+./mvnw test
