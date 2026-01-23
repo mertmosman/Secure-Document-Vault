@@ -1,33 +1,28 @@
-HELP.md
+# Derleme çıktıları (Gereksiz yük)
 target/
-.mvn/wrapper/maven-wrapper.jar
-!**/src/main/**/target/
-!**/src/test/**/target/
+*.class
 
-### STS ###
-.apt_generated
-.classpath
-.factorypath
-.project
-.settings
-.springBeans
-.sts4-cache
-
-### IntelliJ IDEA ###
-.idea
-*.iws
+# IntelliJ IDEA dosyaları (Kişisel ayarlar)
+.idea/
 *.iml
-*.ipr
+*.iws
 
-### NetBeans ###
-/nbproject/private/
-/nbbuild/
-/dist/
-/nbdist/
-/.nb-gradle/
-build/
-!**/src/main/**/build/
-!**/src/test/**/build/
+# Eclipse dosyaları (Başkası Eclipse kullanıyorsa karışmasın)
+.settings/
+.classpath
+.project
 
-### VS Code ###
-.vscode/
+# Maven Wrapper (Bazen yüklenir ama genelde gerek yok)
+.mvn/
+mvnw
+mvnw.cmd
+
+# Sistem dosyaları
+.DS_Store
+Thumbs.db
+
+# Log dosyaları
+*.log
+
+# Docker Environment (Şifreler burada olursa GİZLENMELİ)
+.env
