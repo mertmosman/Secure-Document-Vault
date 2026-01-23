@@ -13,15 +13,15 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Function;
+import org.springframework.beans.factory.annotation.Value;
 
 @Service
 public class JwtService {
+    @Value("${application.security.jwt.secret-key}")
+    private String secretKey;
 
-    // BU ANAHTAR ÇOK ÖNEMLİ! Gerçek hayatta bunu application.properties'e saklarız.
-    // Şimdilik burada dursun. (En az 256 bit - 32 karakter olmalı)
-    private static final String SECRET_KEY = "bu_cok_gizli_ve_uzun_bir_sifreleme_anahtaridir_lutfen_degistir";
-
-    // 1. Token'dan Kullanıcı Adını Çıkar
+    @Value("${application.security.jwt.expiration}")
+    private long jwtExpiration;
     public String extractUsername(String token) {
         return extractClaim(token, Claims::getSubject);
     }
@@ -37,13 +37,15 @@ public class JwtService {
         return generateToken(new HashMap<>(), userDetails);
     }
 
+    // generateToken metodunda süreyi dinamik yap:
     public String generateToken(Map<String, Object> extraClaims, UserDetails userDetails) {
         return Jwts.builder()
                 .setClaims(extraClaims)
-                .setSubject(userDetails.getUsername()) // Kimin için?
-                .setIssuedAt(new Date(System.currentTimeMillis())) // Ne zaman üretildi?
-                .setExpiration(new Date(System.currentTimeMillis() + 1000 * 60 * 60 * 24)) // 24 Saat geçerli
-                .signWith(getSignInKey(), SignatureAlgorithm.HS256) // İmzala
+                .setSubject(userDetails.getUsername())
+                .setIssuedAt(new Date(System.currentTimeMillis()))
+                // Sabit sayı yerine değişkenden gelen süreyi kullan
+                .setExpiration(new Date(System.currentTimeMillis() + jwtExpiration))
+                .signWith(getSignInKey(), SignatureAlgorithm.HS256)
                 .compact();
     }
 
@@ -69,7 +71,8 @@ public class JwtService {
     }
 
     private Key getSignInKey() {
-        byte[] keyBytes = Decoders.BASE64.decode(java.util.Base64.getEncoder().encodeToString(SECRET_KEY.getBytes()));
+        // 'SECRET_KEY' yerine 'secretKey' değişkenini kullan
+        byte[] keyBytes = Decoders.BASE64.decode(secretKey);
         return Keys.hmacShaKeyFor(keyBytes);
     }
 }
