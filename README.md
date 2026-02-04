@@ -3,7 +3,6 @@
 ![Java](https://img.shields.io/badge/Java-17%2B-orange)
 ![Spring Boot](https://img.shields.io/badge/Spring_Boot-4.0.1-green)
 ![Security](https://img.shields.io/badge/Spring_Security-6-red)
-![Docker](https://img.shields.io/badge/Docker-Enabled-blue)
 ![License](https://img.shields.io/badge/License-MIT-lightgrey)
 
 **Secure Document Vault**, yüksek güvenlik standartlarına (OWASP) uygun olarak geliştirilmiş, siber saldırılara karşı güçlendirilmiş bir dosya depolama ve yönetim REST API'sidir.
@@ -43,6 +42,8 @@ Bu proje, "Security First" (Önce Güvenlik) yaklaşımıyla geliştirilmiştir:
 * **API Dokümantasyonu:** SpringDoc OpenAPI (Swagger UI)
 * **DevOps:** Docker, Docker Compose
 * **Test:** JUnit 5, Mockito, Postman
+
+* Not: Bu proje eğitim amaçlı olduğu için dosyalar veritabanında saklanmıştır. Production ortamı için AWS S3 entegrasyonu ve RabbitMQ ile asenkron dosya işleme mimarisi planlanmaktadır.
 
 ---
 
