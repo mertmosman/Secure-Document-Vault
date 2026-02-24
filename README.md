@@ -90,7 +90,7 @@ Uygulama çalıştıktan sonra, tüm endpoint'leri görmek ve test etmek için t
 <img width="914" height="927" alt="image" src="https://github.com/user-attachments/assets/a0b05a0d-2f0f-4c81-81a3-16627a0180f4" />
 
 **Temel Endpointler:**
-* `POST /api/auth/register` - Kayıt Ol
+* `POST /api/auth/register` - Kayıt Olma
 * `POST /api/auth/login` - Giriş Yap (Token Al)
 * `POST /api/documents/upload` - Belge Yükle (Token Gerekli 🔒)
 * `GET /api/documents/{id}` - Belge Görüntüle (Sadece Sahibi Görebilir 🔒)
