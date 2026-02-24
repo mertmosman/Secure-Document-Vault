@@ -14,7 +14,7 @@ Bu proje, sadece dosya yüklemeyi değil; **IDOR, DDoS, Brute-Force** ve **Malic
 
 ## 🚀 Özellikler ve Güvenlik Önlemleri
 
-Bu proje, "Security First" (Önce Güvenlik) yaklaşımıyla geliştirilmiştir:
+Bu proje, "Security First" (Öncelikle Güvenlik) yaklaşımıyla geliştirilmiştir:
 
 ### 🔐 1. Kimlik ve Erişim Yönetimi (IAM)
 * **JWT (JSON Web Token):** Stateless (durumsuz) kimlik doğrulama.
