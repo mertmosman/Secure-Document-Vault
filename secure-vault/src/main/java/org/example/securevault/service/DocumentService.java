@@ -10,64 +10,50 @@ import org.springframework.security.access.prepost.PostAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.File;
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.util.List;
 
 @Service
 public class DocumentService {
 
-    private final String UPLOAD_DIR = "uploads/";
-
     private final DocumentRepository documentRepository;
     private final UserRepository userRepository;
     private final FileValidator fileValidator;
+    private final MinioStorageService minioStorageService; // YENİ SERVİS EKLENDİ
 
     public DocumentService(DocumentRepository documentRepository,
                            UserRepository userRepository,
-                           FileValidator fileValidator) {
+                           FileValidator fileValidator,
+                           MinioStorageService minioStorageService) {
         this.documentRepository = documentRepository;
         this.userRepository = userRepository;
         this.fileValidator = fileValidator;
+        this.minioStorageService = minioStorageService;
     }
 
-    // CREATE: Dosya Yükleme
-    public Document uploadFile(MultipartFile file, String username) throws IOException {
+    // CREATE: Dosya Yükleme (MinIO Entegreli)
+    public Document uploadFile(MultipartFile file, String username) throws Exception {
         // 1. Güvenlik Kontrolü (Tika & Uzantı)
         fileValidator.validateFile(file);
 
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new RuntimeException("Kullanıcı bulunamadı: " + username));
 
-        File directory = new File(UPLOAD_DIR);
-        if (!directory.exists()) {
-            directory.mkdirs();
-        }
+        // 2. Dosyayı fiziksel olarak MinIO'ya yükle ve adresi (key) al
+        String objectKey = minioStorageService.uploadFile(file);
 
-        String originalFilename = file.getOriginalFilename();
-        String filePath = UPLOAD_DIR + originalFilename;
-        Path path = Paths.get(filePath);
-        Files.write(path, file.getBytes());
-
+        // 3. Veritabanına sadece Metadata'yı (bilgileri) kaydet
         Document document = new Document();
-        document.setFileName(originalFilename);
+        document.setFileName(file.getOriginalFilename());
         document.setFileType(file.getContentType());
-        document.setFilePath(filePath);
+        document.setObjectKey(objectKey); // MinIO adresi
         document.setUploadDate(LocalDateTime.now());
         document.setOwner(user); // Dosyayı kullanıcıya zimmetle
 
         return documentRepository.save(document);
     }
 
-    // READ (ONE): Tek Dosya Getir
-    // GÜVENLİK: Metot çalışır, veriyi çeker ama dönmeden önce sahibini kontrol eder.
-    // Dosyanın sahibi (returnObject.owner.username == authentication.name)
-    // VEYA (||)
-    // İsteyen kişi Admin ise (hasRole('ROLE_ADMIN'))
+    // READ (ONE): Metadata Getir (Güvenli)
     @PostAuthorize("returnObject.owner.username == authentication.name || hasRole('ROLE_ADMIN')")
     public Document getDocumentById(Long id) {
         return documentRepository.findById(id)
@@ -79,24 +65,19 @@ public class DocumentService {
         return documentRepository.findAllByOwner_Username(username);
     }
 
-    // DELETE: Dosya Silme (Güvenli)
-    public void deleteDocument(Long id, String username) throws IOException {
+    // DELETE: Dosya Silme (Güvenli & MinIO Entegreli)
+    public void deleteDocument(Long id, String username) throws Exception {
         // 1. Dosyayı bul
         Document document = documentRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Dosya bulunamadı ID: " + id));
 
-        // 2. GÜVENLİK KONTROLÜ: Silmek isteyen kişi, dosyanın sahibi mi?
+        // 2. GÜVENLİK KONTROLÜ
         if (!document.getOwner().getUsername().equals(username)) {
             throw new AccessDeniedException("Bu dosyayı silme yetkiniz yok! Sadece kendi dosyanızı silebilirsiniz.");
         }
 
-        // 3. Diskteki dosyayı sil
-        Path path = Paths.get(document.getFilePath());
-        try {
-            Files.deleteIfExists(path);
-        } catch (IOException e) {
-            System.out.println("Dosya diskte bulunamadı, DB temizleniyor.");
-        }
+        // 3. Dosyayı MinIO'dan fiziksel olarak sil
+        minioStorageService.deleteFile(document.getObjectKey());
 
         // 4. Veritabanından sil
         documentRepository.deleteById(id);

@@ -2,7 +2,12 @@ package org.example.securevault.controller;
 
 import org.example.securevault.model.Document;
 import org.example.securevault.service.DocumentService;
+import org.example.securevault.service.MinioStorageService;
 import org.example.securevault.service.RateLimitingService;
+import org.springframework.core.io.InputStreamResource;
+import org.springframework.core.io.Resource;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -10,6 +15,7 @@ import org.springframework.http.HttpStatus;
 import io.github.bucket4j.Bucket;
 import io.github.bucket4j.ConsumptionProbe;
 
+import java.io.InputStream;
 import java.security.Principal;
 import java.util.List;
 
@@ -18,46 +24,66 @@ import java.util.List;
 public class DocumentController {
 
     private final DocumentService documentService;
-    private final RateLimitingService rateLimitingService; // 1. YENİ SERVİSİ EKLE
+    private final RateLimitingService rateLimitingService;
+    private final MinioStorageService minioStorageService; // YENİ SERVİS EKLENDİ
 
-    // Constructor'ı güncelle
-    public DocumentController(DocumentService documentService, RateLimitingService rateLimitingService) {
+    public DocumentController(DocumentService documentService,
+                              RateLimitingService rateLimitingService,
+                              MinioStorageService minioStorageService) {
         this.documentService = documentService;
         this.rateLimitingService = rateLimitingService;
+        this.minioStorageService = minioStorageService;
     }
 
-    // UPLOAD Endpoint - GÜNCELLENDİ
+    // UPLOAD Endpoint
     @PostMapping(value = "/upload", consumes = "multipart/form-data")
     public ResponseEntity<String> uploadDocument(@RequestParam("file") MultipartFile file,
                                                  Principal principal) {
         String username = principal.getName();
 
-        // --- 2. HIZ SINIRI KONTROLÜ BAŞLANGIÇ ---
+        // --- HIZ SINIRI KONTROLÜ ---
         Bucket bucket = rateLimitingService.resolveBucket(username);
-        ConsumptionProbe probe = bucket.tryConsumeAndReturnRemaining(1); // 1 Jeton harcamayı dene
+        ConsumptionProbe probe = bucket.tryConsumeAndReturnRemaining(1);
 
         if (!probe.isConsumed()) {
-            // Eğer jeton yetmediyse:
-            long waitForRefill = probe.getNanosToWaitForRefill() / 1_000_000_000; // Saniye cinsinden bekleme süresi
-            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS) // 429 Hatası
+            long waitForRefill = probe.getNanosToWaitForRefill() / 1_000_000_000;
+            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
                     .body("Çok hızlı işlem yapıyorsunuz! Lütfen " + waitForRefill + " saniye bekleyin.");
         }
-        // --- HIZ SINIRI KONTROLÜ BİTİŞ ---
 
         try {
             Document savedDoc = documentService.uploadFile(file, username);
-            return ResponseEntity.ok("Dosya yüklendi. ID: " + savedDoc.getId());
+            return ResponseEntity.ok("Dosya başarıyla MinIO'ya yüklendi. ID: " + savedDoc.getId());
         } catch (Exception e) {
             return ResponseEntity.internalServerError().body("Yükleme Hatası: " + e.getMessage());
         }
     }
 
-    // GET (ONE): ID ile getir (Service katmanında @PostAuthorize koruması var)
+    // GET (METADATA): Sadece dosya bilgilerini (JSON) getirir
     @GetMapping("/{id}")
-    public ResponseEntity<Document> getDocument(@PathVariable Long id) {
-        // IDOR kontrolü Service içinde yapıldığı için burada ekstra koda gerek yok.
-        // Eğer yetkisiz biri isterse Service otomatik 403 fırlatır.
+    public ResponseEntity<Document> getDocumentInfo(@PathVariable Long id) {
         return ResponseEntity.ok(documentService.getDocumentById(id));
+    }
+
+    // GET (DOWNLOAD): Dosyanın kendisini fiziksel olarak indirir (YENİ EKLENDİ)
+    @GetMapping("/{id}/download")
+    public ResponseEntity<Resource> downloadFile(@PathVariable Long id) {
+        try {
+            // 1. Güvenli şekilde DB'den dosya bilgilerini çek (IDOR korumalı)
+            Document document = documentService.getDocumentById(id);
+
+            // 2. MinIO'dan asıl veri akışını (Stream) al
+            InputStream stream = minioStorageService.downloadFile(document.getObjectKey());
+
+            // 3. İndirilebilir formatta (Attachment) dön
+            return ResponseEntity.ok()
+                    .contentType(MediaType.parseMediaType(document.getFileType()))
+                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + document.getFileName() + "\"")
+                    .body(new InputStreamResource(stream));
+
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
     }
 
     // GET (ALL): Sadece giriş yapanın dosyalarını listele
@@ -66,14 +92,13 @@ public class DocumentController {
         return ResponseEntity.ok(documentService.getAllDocuments(principal.getName()));
     }
 
-    // DELETE: Giriş yapan kişi sadece kendi dosyasını silebilir
+    // DELETE: Dosyayı hem DB'den hem MinIO'dan siler
     @DeleteMapping("/{id}")
     public ResponseEntity<String> deleteDocument(@PathVariable Long id, Principal principal) {
         try {
             documentService.deleteDocument(id, principal.getName());
-            return ResponseEntity.ok("Dosya başarıyla silindi.");
+            return ResponseEntity.ok("Dosya başarıyla veritabanından ve MinIO'dan silindi.");
         } catch (Exception e) {
-            // AccessDeniedException servisten gelirse burası yakalar (veya GlobalExceptionHandler)
             return ResponseEntity.status(403).body("İşlem Başarısız: " + e.getMessage());
         }
     }

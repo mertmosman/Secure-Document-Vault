@@ -1,4 +1,5 @@
 package org.example.securevault.model;
+
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.persistence.*;
 import lombok.Data;
@@ -18,11 +19,12 @@ public class Document {
 
     private String fileType; // application/pdf (MIME type)
 
-    private String filePath; // Sunucuda/diskte saklandığı yol
+    // YENİ: Dosyanın MinIO üzerindeki adresi (UUID_dosyaadi)
+    private String objectKey;
 
     private LocalDateTime uploadDate;
 
-    // Dosyanın kime ait olduğunu bilmeliyiz [cite: 31]
+    // Dosyanın kime ait olduğunu bilmeliyiz
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id")
     private User owner;
