@@ -3,6 +3,7 @@
 ![Java](https://img.shields.io/badge/Java-17%2B-orange)
 ![Spring Boot](https://img.shields.io/badge/Spring_Boot-4.0.1-green)
 ![Security](https://img.shields.io/badge/Spring_Security-6-red)
+![Docker](https://img.shields.io/badge/Docker-Enabled-blue)
 ![License](https://img.shields.io/badge/License-MIT-lightgrey)
 
 **Secure Document Vault**, yüksek güvenlik standartlarına (OWASP) uygun olarak geliştirilmiş, siber saldırılara karşı güçlendirilmiş bir dosya depolama ve yönetim REST API'sidir.
@@ -13,7 +14,7 @@ Bu proje, sadece dosya yüklemeyi değil; **IDOR, DDoS, Brute-Force** ve **Malic
 
 ## 🚀 Özellikler ve Güvenlik Önlemleri
 
-Bu proje, "Security First" (Önce Güvenlik) yaklaşımıyla geliştirilmiştir:
+Bu proje, "Security First" (Öncelikle Güvenlik) yaklaşımıyla geliştirilmiştir:
 
 ### 🔐 1. Kimlik ve Erişim Yönetimi (IAM)
 * **JWT (JSON Web Token):** Stateless (durumsuz) kimlik doğrulama.
@@ -89,7 +90,7 @@ Uygulama çalıştıktan sonra, tüm endpoint'leri görmek ve test etmek için t
 <img width="914" height="927" alt="image" src="https://github.com/user-attachments/assets/a0b05a0d-2f0f-4c81-81a3-16627a0180f4" />
 
 **Temel Endpointler:**
-* `POST /api/auth/register` - Kayıt Ol
+* `POST /api/auth/register` - Kayıt Olma
 * `POST /api/auth/login` - Giriş Yap (Token Al)
 * `POST /api/documents/upload` - Belge Yükle (Token Gerekli 🔒)
 * `GET /api/documents/{id}` - Belge Görüntüle (Sadece Sahibi Görebilir 🔒)
