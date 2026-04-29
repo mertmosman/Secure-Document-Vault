@@ -60,4 +60,13 @@ public class FileValidator {
         // Son noktadan sonrasını al ve küçült (PDF -> pdf)
         return fileName.substring(fileName.lastIndexOf(".") + 1).toLowerCase();
     }
+    // YENİ: InputStream üzerinden Tika güvenlik taraması
+    public void validateStream(java.io.InputStream inputStream, String fileName) throws Exception {
+        org.apache.tika.Tika tika = new org.apache.tika.Tika();
+        String detectedType = tika.detect(inputStream); // Magic Byte kontrolü
+
+        if (!detectedType.equals("application/pdf")) {
+            throw new Exception("Güvenlik İhlali: " + fileName + " gerçek bir PDF değil! (Tespit edilen: " + detectedType + ")");
+        }
+    }
 }

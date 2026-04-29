@@ -28,4 +28,7 @@ public class Document {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id")
     private User owner;
+
+    @Enumerated(EnumType.STRING)
+    private DocumentStatus status;
 }

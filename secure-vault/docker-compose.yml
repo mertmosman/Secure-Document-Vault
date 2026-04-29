@@ -7,6 +7,7 @@ services:
     depends_on:
       - postgres
       - minio
+      - rabbitmq
     environment:
       - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/securevault_db
       - SPRING_DATASOURCE_USERNAME=postgres
@@ -15,6 +16,10 @@ services:
       - MINIO_ACCESS_KEY=minioadmin
       - MINIO_SECRET_KEY=minioadmin
       - MINIO_BUCKET=secure-vault-bucket
+      - SPRING_RABBITMQ_HOST=rabbitmq
+      - SPRING_RABBITMQ_PORT=5672
+      - SPRING_RABBITMQ_USERNAME=guest
+      - SPRING_RABBITMQ_PASSWORD=guest
 
   postgres:
     image: postgres:15-alpine
@@ -40,6 +45,16 @@ services:
     command: server /data --console-address ":9001"
     volumes:
       - minio_data:/data
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: secure-vault-rabbitmq
+    ports:
+      - "5672:5672"   # Uygulamanın bağlandığı port
+      - "15672:15672" # Tarayıcıdan gireceğimiz Yönetim Paneli portu
+    environment:
+      - RABBITMQ_DEFAULT_USER=guest
+      - RABBITMQ_DEFAULT_PASS=guest
 
 volumes:
   postgres_data:
