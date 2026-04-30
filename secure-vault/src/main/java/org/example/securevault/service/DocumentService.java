@@ -11,6 +11,9 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PostAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -21,9 +24,8 @@ public class DocumentService {
     private final DocumentRepository documentRepository;
     private final UserRepository userRepository;
     private final MinioStorageService minioStorageService;
-    private final RabbitTemplate rabbitTemplate; // RABBITMQ EKLENDİ
+    private final RabbitTemplate rabbitTemplate;
 
-    // DİKKAT: FileValidator'ı buradan sildik çünkü taramayı artık arka planda İşçi (Worker) yapacak!
     public DocumentService(DocumentRepository documentRepository,
                            UserRepository userRepository,
                            MinioStorageService minioStorageService,
@@ -34,46 +36,57 @@ public class DocumentService {
         this.rabbitTemplate = rabbitTemplate;
     }
 
-    // CREATE: Asenkron Dosya Yükleme (Kullanıcı Beklemez)
+    // CREATE: Asenkron Dosya Yükleme
+    // YENİ: Hem userDocuments hem de allDocuments (Admin listesi) temizlenir
+    @CacheEvict(value = {"userDocuments", "allDocuments"}, allEntries = true)
     public Document uploadFile(MultipartFile file, String username) throws Exception {
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new RuntimeException("Kullanıcı bulunamadı: " + username));
 
-        // 1. Tika taraması YOK! Doğrudan MinIO'ya koyuyoruz (Milisaniyeler sürer)
         String objectKey = minioStorageService.uploadFile(file);
 
-        // 2. Veritabanına "PENDING" (Bekliyor) olarak kaydet
         Document document = new Document();
         document.setFileName(file.getOriginalFilename());
         document.setFileType(file.getContentType());
         document.setObjectKey(objectKey);
         document.setUploadDate(LocalDateTime.now());
         document.setOwner(user);
-        document.setStatus(DocumentStatus.PENDING); // YENİ STATÜ: İşlem Sırasında
+        document.setStatus(DocumentStatus.PENDING);
 
         Document savedDoc = documentRepository.save(document);
 
-        // 3. Postacıya (RabbitMQ) not bırak: "İşçi uyan, tarayacağın bir dosya var!"
         FileProcessMessage message = new FileProcessMessage(savedDoc.getId(), objectKey);
         rabbitTemplate.convertAndSend("file.process.queue", message);
 
-        // 4. Kullanıcıya ANINDA cevap dön (Sunucu beklemez)
         return savedDoc;
     }
 
-    // READ (ONE): Metadata Getir (Güvenli)
+    // READ (ONE): Metadata Getir
+    @Transactional(readOnly = true)
     @PostAuthorize("returnObject.owner.username == authentication.name || hasRole('ROLE_ADMIN')")
     public Document getDocumentById(Long id) {
         return documentRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Dosya bulunamadı ID: " + id));
     }
 
-    // READ (ALL): Sadece Kişinin Kendi Dosyaları
+    // READ (ALL - USER): Sadece Kişinin Kendi Dosyaları
+    @Cacheable(value = "userDocuments", key = "#username")
     public List<Document> getAllDocuments(String username) {
+        System.out.println("⚠️ Veritabanına gidiliyor... (User araması)");
         return documentRepository.findAllByOwner_Username(username);
     }
 
-    // DELETE: Dosya Silme (Güvenli & MinIO Entegreli)
+    // READ (ALL - ADMIN): Sistemdeki Tüm Dosyalar
+    // YENİ: Admin için çalışacak metot
+    @Cacheable(value = "allDocuments")
+    public List<Document> getAllDocumentsForAdmin() {
+        System.out.println("⚠️ Veritabanına gidiliyor... (Admin araması - Tüm sistem)");
+        return documentRepository.findAll();
+    }
+
+    // DELETE: Dosya Silme
+    // YENİ: Silme işleminde de her iki önbellek temizlenir
+    @CacheEvict(value = {"userDocuments", "allDocuments"}, allEntries = true)
     public void deleteDocument(Long id, String username) throws Exception {
         Document document = documentRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Dosya bulunamadı ID: " + id));
@@ -82,10 +95,7 @@ public class DocumentService {
             throw new AccessDeniedException("Bu dosyayı silme yetkiniz yok! Sadece kendi dosyanızı silebilirsiniz.");
         }
 
-        // Dosyayı MinIO'dan fiziksel olarak sil
         minioStorageService.deleteFile(document.getObjectKey());
-
-        // Veritabanından sil
         documentRepository.deleteById(id);
     }
 }

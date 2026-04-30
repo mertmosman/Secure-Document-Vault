@@ -9,6 +9,8 @@ import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.GrantedAuthority;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.http.HttpStatus;
@@ -25,7 +27,7 @@ public class DocumentController {
 
     private final DocumentService documentService;
     private final RateLimitingService rateLimitingService;
-    private final MinioStorageService minioStorageService; // YENİ SERVİS EKLENDİ
+    private final MinioStorageService minioStorageService;
 
     public DocumentController(DocumentService documentService,
                               RateLimitingService rateLimitingService,
@@ -35,13 +37,10 @@ public class DocumentController {
         this.minioStorageService = minioStorageService;
     }
 
-    // UPLOAD Endpoint
     @PostMapping(value = "/upload", consumes = "multipart/form-data")
     public ResponseEntity<String> uploadDocument(@RequestParam("file") MultipartFile file,
                                                  Principal principal) {
         String username = principal.getName();
-
-        // --- HIZ SINIRI KONTROLÜ ---
         Bucket bucket = rateLimitingService.resolveBucket(username);
         ConsumptionProbe probe = bucket.tryConsumeAndReturnRemaining(1);
 
@@ -59,40 +58,42 @@ public class DocumentController {
         }
     }
 
-    // GET (METADATA): Sadece dosya bilgilerini (JSON) getirir
     @GetMapping("/{id}")
     public ResponseEntity<Document> getDocumentInfo(@PathVariable Long id) {
         return ResponseEntity.ok(documentService.getDocumentById(id));
     }
 
-    // GET (DOWNLOAD): Dosyanın kendisini fiziksel olarak indirir (YENİ EKLENDİ)
     @GetMapping("/{id}/download")
     public ResponseEntity<Resource> downloadFile(@PathVariable Long id) {
         try {
-            // 1. Güvenli şekilde DB'den dosya bilgilerini çek (IDOR korumalı)
             Document document = documentService.getDocumentById(id);
-
-            // 2. MinIO'dan asıl veri akışını (Stream) al
             InputStream stream = minioStorageService.downloadFile(document.getObjectKey());
-
-            // 3. İndirilebilir formatta (Attachment) dön
             return ResponseEntity.ok()
                     .contentType(MediaType.parseMediaType(document.getFileType()))
                     .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + document.getFileName() + "\"")
                     .body(new InputStreamResource(stream));
-
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
 
-    // GET (ALL): Sadece giriş yapanın dosyalarını listele
+    // YENİ: ADMIN KONTROLÜ EKLENDİ
     @GetMapping
-    public ResponseEntity<List<Document>> getAllDocuments(Principal principal) {
-        return ResponseEntity.ok(documentService.getAllDocuments(principal.getName()));
+    public ResponseEntity<List<Document>> getAllDocuments(Authentication authentication) {
+        // Kişinin rollerine bak, içinde ADMIN var mı?
+        boolean isAdmin = authentication.getAuthorities().stream()
+                .map(GrantedAuthority::getAuthority)
+                .anyMatch(role -> role.equals("ROLE_ADMIN") || role.equals("ADMIN"));
+
+        if (isAdmin) {
+            // Adminse bütün veritabanını getir
+            return ResponseEntity.ok(documentService.getAllDocumentsForAdmin());
+        } else {
+            // User ise sadece kendininkileri getir
+            return ResponseEntity.ok(documentService.getAllDocuments(authentication.getName()));
+        }
     }
 
-    // DELETE: Dosyayı hem DB'den hem MinIO'dan siler
     @DeleteMapping("/{id}")
     public ResponseEntity<String> deleteDocument(@PathVariable Long id, Principal principal) {
         try {

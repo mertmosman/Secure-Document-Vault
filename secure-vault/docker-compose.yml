@@ -8,6 +8,7 @@ services:
       - postgres
       - minio
       - rabbitmq
+      - redis
     environment:
       - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/securevault_db
       - SPRING_DATASOURCE_USERNAME=postgres
@@ -20,6 +21,8 @@ services:
       - SPRING_RABBITMQ_PORT=5672
       - SPRING_RABBITMQ_USERNAME=guest
       - SPRING_RABBITMQ_PASSWORD=guest
+      - SPRING_REDIS_HOST=redis
+      - SPRING_REDIS_PORT=6379
 
   postgres:
     image: postgres:15-alpine
@@ -50,11 +53,17 @@ services:
     image: rabbitmq:3-management-alpine
     container_name: secure-vault-rabbitmq
     ports:
-      - "5672:5672"   # Uygulamanın bağlandığı port
-      - "15672:15672" # Tarayıcıdan gireceğimiz Yönetim Paneli portu
+      - "5672:5672"
+      - "15672:15672"
     environment:
       - RABBITMQ_DEFAULT_USER=guest
       - RABBITMQ_DEFAULT_PASS=guest
+
+  redis:
+    image: redis:7-alpine
+    container_name: secure-vault-redis
+    ports:
+      - "6379:6379"
 
 volumes:
   postgres_data:
