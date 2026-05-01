@@ -34,6 +34,16 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
                 .csrf(AbstractHttpConfigurer::disable)
+                .headers(headers -> headers
+                        // 1. Clickjacking Koruması (Uygulamanın başka sitede iframe olarak açılmasını reddet)
+                        .frameOptions(frame -> frame.deny())
+                        // 2. XSS Koruması için İçerik Güvenlik Politikası (Sadece kendi sunucumdaki scriptler çalışsın)
+                        .contentSecurityPolicy(csp -> csp.policyDirectives("default-src 'self'"))
+                        // 3. HSTS (Sadece HTTPS kullanımını zorunlu kıl - 1 yıl boyunca hatırla)
+                        .httpStrictTransportSecurity(hsts -> hsts
+                                .includeSubDomains(true)
+                                .maxAgeInSeconds(31536000))
+                )
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/auth/**", "/swagger-ui/**", "/v3/api-docs/**").permitAll()
                         .anyRequest().authenticated()

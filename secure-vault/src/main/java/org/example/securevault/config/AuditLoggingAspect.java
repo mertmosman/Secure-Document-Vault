@@ -6,6 +6,7 @@ import org.aspectj.lang.annotation.AfterReturning;
 import org.aspectj.lang.annotation.Aspect;
 import org.example.securevault.model.AuditLog;
 import org.example.securevault.repository.AuditLogRepository;
+import org.slf4j.MDC; // YENİ EKLENDİ
 import org.springframework.stereotype.Component;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
@@ -22,27 +23,21 @@ public class AuditLoggingAspect {
         this.auditLogRepository = auditLogRepository;
     }
 
-    // 1. UPLOAD İşlemini Dinle
-    // DocumentController içindeki uploadDocument metodu başarıyla bitince burası çalışır.
     @AfterReturning(pointcut = "execution(* org.example.securevault.controller.DocumentController.uploadDocument(..))")
     public void logUpload(JoinPoint joinPoint) {
         saveLog(joinPoint, "DOSYA_YUKLEME");
     }
 
-    // 2. DELETE İşlemini Dinle
     @AfterReturning(pointcut = "execution(* org.example.securevault.controller.DocumentController.deleteDocument(..))")
     public void logDelete(JoinPoint joinPoint) {
         saveLog(joinPoint, "DOSYA_SILME");
     }
 
-    // Ortak Kayıt Metodu
     private void saveLog(JoinPoint joinPoint, String action) {
         try {
-            // A. İstek bilgilerini al (IP adresi vb. için)
             HttpServletRequest request = ((ServletRequestAttributes) RequestContextHolder.currentRequestAttributes()).getRequest();
             String ipAddress = request.getRemoteAddr();
 
-            // B. Kullanıcı adını bul (Parametrelerden)
             String username = "Bilinmiyor";
             Object[] args = joinPoint.getArgs();
             for (Object arg : args) {
@@ -52,14 +47,19 @@ public class AuditLoggingAspect {
                 }
             }
 
-            // C. Detay oluştur (Hangi metot çalıştı?)
+            // YENİ: Sistemin görünmez sırt çantasından Correlation ID'yi çek!
+            String correlationId = MDC.get("correlationId");
+            if (correlationId == null) {
+                correlationId = "Sistem-Tetiklemesi"; // Manuel testler vb. için önlem
+            }
+
             String details = "Metot: " + joinPoint.getSignature().getName();
 
-            // D. Veritabanına Yaz
-            AuditLog log = new AuditLog(username, action, details, ipAddress);
+            // D. Veritabanına Yaz (Correlation ID ile birlikte)
+            AuditLog log = new AuditLog(username, action, details, ipAddress, correlationId);
             auditLogRepository.save(log);
 
-            System.out.println("--- AUDIT LOG KAYDEDİLDİ: " + action + " ---");
+            System.out.println("--- AUDIT LOG KAYDEDİLDİ: " + action + " (Trace ID: " + correlationId + ") ---");
 
         } catch (Exception e) {
             System.out.println("Audit Log Hatası: " + e.getMessage());

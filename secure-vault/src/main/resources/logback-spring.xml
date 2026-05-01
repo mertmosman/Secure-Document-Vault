@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <!-- Logları Konsola JSON olarak basacak ayar -->
+    <appender name="jsonConsole" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+            <!-- Az önce MDC'ye koyduğumuz correlationId'yi JSON'a dahil et! -->
+            <includeMdcKeyName>correlationId</includeMdcKeyName>
+        </encoder>
+    </appender>
+
+    <!-- Spring'in kendi kalabalık loglarını gizle, sadece bizimki ve önemli olanlar kalsın -->
+    <logger name="org.springframework" level="WARN"/>
+    <logger name="org.example.securevault" level="INFO"/>
+
+    <root level="INFO">
+        <appender-ref ref="jsonConsole" />
+    </root>
+</configuration>

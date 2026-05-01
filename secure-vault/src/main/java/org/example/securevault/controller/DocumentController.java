@@ -41,13 +41,11 @@ public class DocumentController {
     public ResponseEntity<String> uploadDocument(@RequestParam("file") MultipartFile file,
                                                  Principal principal) {
         String username = principal.getName();
-        Bucket bucket = rateLimitingService.resolveBucket(username);
-        ConsumptionProbe probe = bucket.tryConsumeAndReturnRemaining(1);
 
-        if (!probe.isConsumed()) {
-            long waitForRefill = probe.getNanosToWaitForRefill() / 1_000_000_000;
+        // --- YENİ: REDİS DAĞITIK HIZ SINIRI KONTROLÜ ---
+        if (!rateLimitingService.isAllowed(username)) {
             return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
-                    .body("Çok hızlı işlem yapıyorsunuz! Lütfen " + waitForRefill + " saniye bekleyin.");
+                    .body("Çok hızlı işlem yapıyorsunuz! Lütfen 1 dakika bekleyin.");
         }
 
         try {
