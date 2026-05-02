@@ -5,6 +5,7 @@ import org.example.securevault.repository.RefreshTokenRepository;
 import org.example.securevault.repository.UserRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.example.securevault.model.User;
 
 import java.time.Instant;
 import java.util.Optional;
@@ -24,11 +25,11 @@ public class RefreshTokenService {
         this.userRepository = userRepository;
     }
 
-    public RefreshToken createRefreshToken(String username) {
+    public RefreshToken createRefreshToken(User user) {
         RefreshToken refreshToken = new RefreshToken();
-        refreshToken.setUser(userRepository.findByUsername(username).orElseThrow());
+        refreshToken.setUser(user); // Veritabanına sormaya gerek kalmadı!
         refreshToken.setExpiryDate(Instant.now().plusMillis(refreshTokenDurationMs));
-        refreshToken.setToken(UUID.randomUUID().toString()); // Şifreli JWT değil, rastgele UUID yapıyoruz
+        refreshToken.setToken(UUID.randomUUID().toString());
 
         return refreshTokenRepository.save(refreshToken);
     }
@@ -46,8 +47,9 @@ public class RefreshTokenService {
         return refreshTokenRepository.findByToken(token);
     }
 
+    // username yerine User objesi alsın
     @Transactional
-    public int deleteByUsername(String username) {
-        return refreshTokenRepository.deleteByUser(userRepository.findByUsername(username).orElseThrow());
+    public int deleteByUser(User user) {
+        return refreshTokenRepository.deleteByUser(user);
     }
 }

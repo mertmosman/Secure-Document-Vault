@@ -4,8 +4,6 @@ import org.example.securevault.model.Document;
 import org.example.securevault.service.DocumentService;
 import org.example.securevault.service.MinioStorageService;
 import org.example.securevault.service.RateLimitingService;
-import org.springframework.core.io.InputStreamResource;
-import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -14,12 +12,11 @@ import org.springframework.security.core.GrantedAuthority;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.http.HttpStatus;
-import io.github.bucket4j.Bucket;
-import io.github.bucket4j.ConsumptionProbe;
 
-import java.io.InputStream;
 import java.security.Principal;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/documents")
@@ -42,7 +39,7 @@ public class DocumentController {
                                                  Principal principal) {
         String username = principal.getName();
 
-        // --- YENİ: REDİS DAĞITIK HIZ SINIRI KONTROLÜ ---
+        // --- REDİS DAĞITIK HIZ SINIRI KONTROLÜ ---
         if (!rateLimitingService.isAllowed(username)) {
             return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
                     .body("Çok hızlı işlem yapıyorsunuz! Lütfen 1 dakika bekleyin.");
@@ -61,21 +58,28 @@ public class DocumentController {
         return ResponseEntity.ok(documentService.getDocumentById(id));
     }
 
+    // YENİ: GET (DOWNLOAD LINK): Artık dosyayı değil, 5 dakikalık MinIO indirme linkini dönüyor!
     @GetMapping("/{id}/download")
-    public ResponseEntity<Resource> downloadFile(@PathVariable Long id) {
-        try {
-            Document document = documentService.getDocumentById(id);
-            InputStream stream = minioStorageService.downloadFile(document.getObjectKey());
-            return ResponseEntity.ok()
-                    .contentType(MediaType.parseMediaType(document.getFileType()))
-                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + document.getFileName() + "\"")
-                    .body(new InputStreamResource(stream));
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
-        }
+    public ResponseEntity<Map<String, String>> getDownloadLink(@PathVariable Long id, Authentication authentication) {
+
+        String username = authentication.getName();
+
+        // Kullanıcı Admin mi kontrolü
+        boolean isAdmin = authentication.getAuthorities().stream()
+                .anyMatch(role -> role.getAuthority().equals("ROLE_ADMIN") || role.getAuthority().equals("ADMIN"));
+
+        // Servisten imzalı linki üret
+        String downloadUrl = documentService.generateDownloadLink(id, username, isAdmin);
+
+        // Frontend'e JSON olarak url'i ver
+        Map<String, String> response = new HashMap<>();
+        response.put("downloadUrl", downloadUrl);
+        response.put("expiresIn", "5 Minutes");
+
+        return ResponseEntity.ok(response);
     }
 
-    // YENİ: ADMIN KONTROLÜ EKLENDİ
+    // ADMIN KONTROLÜ
     @GetMapping
     public ResponseEntity<List<Document>> getAllDocuments(Authentication authentication) {
         // Kişinin rollerine bak, içinde ADMIN var mı?

@@ -98,4 +98,18 @@ public class DocumentService {
         minioStorageService.deleteFile(document.getObjectKey());
         documentRepository.deleteById(id);
     }
+    // YENİ: Güvenli indirme linki oluşturma
+    public String generateDownloadLink(Long id, String username, boolean isAdmin) {
+        // 1. Dosyayı veritabanından bul
+        Document document = documentRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Dosya bulunamadı ID: " + id));
+
+        // 2. Yetki Kontrolü (Sahibi mi? Admin mi?)
+        if (!document.getOwner().getUsername().equals(username) && !isAdmin) {
+            throw new org.springframework.security.access.AccessDeniedException("Bu dosyayı indirme yetkiniz yok!");
+        }
+
+        // 3. MinIO'dan 5 dakikalık imzalı linki al ve dön
+        return minioStorageService.getSignedUrl(document.getObjectKey());
+    }
 }

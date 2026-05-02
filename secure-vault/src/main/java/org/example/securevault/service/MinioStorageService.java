@@ -8,6 +8,9 @@ import io.minio.PutObjectArgs;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
+import io.minio.GetPresignedObjectUrlArgs;
+import io.minio.http.Method;
+import java.util.concurrent.TimeUnit;
 
 import java.io.InputStream;
 import java.util.UUID;
@@ -50,7 +53,19 @@ public class MinioStorageService {
 
         return objectKey; // Veritabanına kaydedeceğimiz adres bu!
     }
-
+    public String getSignedUrl(String objectKey) {
+        try {
+            return minioClient.getPresignedObjectUrl(
+                    GetPresignedObjectUrlArgs.builder()
+                            .method(Method.GET)
+                            .bucket(bucketName)
+                            .object(objectKey)
+                            .expiry(5, TimeUnit.MINUTES) // Link sadece 5 dakika geçerli olacak!
+                            .build());
+        } catch (Exception e) {
+            throw new RuntimeException("İmzalı indirme linki oluşturulamadı: " + e.getMessage());
+        }
+    }
     // 2. Dosyayı MinIO'dan İndirir
     public InputStream downloadFile(String objectKey) throws Exception {
         return minioClient.getObject(

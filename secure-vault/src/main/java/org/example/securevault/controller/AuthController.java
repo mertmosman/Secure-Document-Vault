@@ -13,6 +13,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.web.bind.annotation.*;
+import org.example.securevault.model.User;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -64,22 +65,24 @@ public class AuthController {
     // LOGIN - ARTIK 2 TOKEN BİRDEN DÖNÜYOR!
     @PostMapping("/login")
     public ResponseEntity<Map<String, String>> login(@RequestBody LoginRequest request) {
-        // 1. Spring Security ile kullanıcı adı ve şifreyi doğrula
         authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(request.getUsername(), request.getPassword())
         );
 
-        // 2. Kullanıcı bilgilerini al
-        final UserDetails userDetails = userDetailsService.loadUserByUsername(request.getUsername());
+        // Kullanıcıyı (User) veritabanından SADECE 1 KERE bul!
+        User user = userRepository.findByUsername(request.getUsername())
+                .orElseThrow(() -> new RuntimeException("Kullanıcı bulunamadı"));
 
-        // 3. (YENİ) Başka cihazda veya eski oturumda kalan refresh token'ları temizle
-        refreshTokenService.deleteByUsername(request.getUsername());
+        final UserDetails userDetails = userDetailsService.loadUserByUsername(user.getUsername());
 
-        // 4. Tokenları üret
+        // String username yerine doğrudan User objesini ver, gereksiz SELECT atmasın!
+        refreshTokenService.deleteByUser(user);
+
         String accessToken = jwtService.generateToken(userDetails);
-        RefreshToken refreshToken = refreshTokenService.createRefreshToken(request.getUsername());
 
-        // 5. Her ikisini de JSON objesi (Map) olarak dön
+        // String username yerine User objesini ver
+        RefreshToken refreshToken = refreshTokenService.createRefreshToken(user);
+
         Map<String, String> response = new HashMap<>();
         response.put("accessToken", accessToken);
         response.put("refreshToken", refreshToken.getToken());
