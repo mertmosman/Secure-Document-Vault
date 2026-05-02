@@ -4,81 +4,99 @@
 ![Spring Boot](https://img.shields.io/badge/Spring_Boot-4.0.1-green)
 ![Security](https://img.shields.io/badge/Spring_Security-6-red)
 ![Docker](https://img.shields.io/badge/Docker-Enabled-blue)
-![License](https://img.shields.io/badge/License-MIT-lightgrey)
+![Architecture](https://img.shields.io/badge/Architecture-Microservices_Ready-purple)
 
-**Secure Document Vault**, yüksek güvenlik standartlarına (OWASP) uygun olarak geliştirilmiş, siber saldırılara karşı güçlendirilmiş bir dosya depolama ve yönetim REST API'sidir.
+**Secure Document Vault**, yüksek güvenlik standartlarına (OWASP) uygun olarak geliştirilmiş, siber saldırılara karşı güçlendirilmiş ve yüksek trafik (High Load) altında çalışabilen dağıtık bir dosya depolama ve yönetim REST API'sidir.
 
-Bu proje, sadece dosya yüklemeyi değil; **IDOR, DDoS, Brute-Force** ve **Malicious File Upload** gibi yaygın web saldırılarına karşı nasıl savunma yapılacağını göstermek amacıyla tasarlanmıştır.
+Bu proje; **IDOR, DDoS, Brute-Force** ve **Malicious File Upload** gibi yaygın web saldırılarına karşı savunma yapmanın yanı sıra, **Asenkron Mesajlaşma**, **Dağıtık Ön Bellekleme (Distributed Caching)** ve **S3 Uyumlu Nesne Depolama** mimarilerinin Java Spring Boot ile nasıl entegre edileceğini göstermek amacıyla tasarlanmıştır.
 
 ---
 
 ## 🚀 Özellikler ve Güvenlik Önlemleri
 
-Bu proje, "Security First" (Öncelikle Güvenlik) yaklaşımıyla geliştirilmiştir:
+Bu proje, "Security First" (Öncelikle Güvenlik) ve "High Performance" (Yüksek Performans) yaklaşımlarıyla geliştirilmiştir:
 
-### 🔐 1. Kimlik ve Erişim Yönetimi (IAM)
-* **JWT (JSON Web Token):** Stateless (durumsuz) kimlik doğrulama.
-* **RBAC (Rol Tabanlı Erişim):** `ADMIN` ve `USER` rolleri ile yetkilendirme.
-* **Password Hashing:** Şifreler veritabanında asla açık tutulmaz (BCrypt/Argon2 kullanımı için altyapı).
+### 🔐 1. Kusursuz Kimlik ve Erişim Yönetimi (IAM)
+* **Çift Jetonlu (Dual-Token) Auth:** Sadece Access Token değil, güvenli oturum yönetimi için `RefreshToken` sistemi entegre edilmiştir.
+* **RBAC (Rol Tabanlı Erişim):** `ADMIN` ve `USER` rolleri ile API bazlı yetkilendirme.
+* **Password Hashing:** Şifreler veritabanında asla açık tutulmaz (BCrypt kullanılarak hashlenir).
 
-### 🛡️ 2. Uygulama Güvenliği
-* **IDOR Koruması (Broken Access Control):** Spring Security `@PostAuthorize` kullanılarak, kullanıcıların URL üzerinden ID değiştirip başkasına ait dosyaları görmesi engellenmiştir.
-* **Güvenli Dosya Yükleme:**
-    * **Magic Bytes Kontrolü:** Sadece dosya uzantısına (.pdf) bakılmaz, dosyanın `hex signature` (büyülü baytları) analiz edilerek içeriğin gerçekten PDF olup olmadığı (Apache Tika / Java IO ile) doğrulanır.
-* **Rate Limiting (Hız Sınırlama):** **Bucket4j** kullanılarak Token Bucket algoritması uygulanmıştır. Spam ve DDoS saldırılarına karşı her kullanıcıya belirli bir kota (örn: dakikada 10 istek) tanımlanmıştır.
+### 🛡️ 2. Gelişmiş Uygulama Güvenliği
+* **IDOR Koruması (Broken Access Control):** Kullanıcıların URL üzerinden ID değiştirip başkasına ait dosyaları görmesi (Yetki Yükseltme) engellenmiştir.
+* **Güvenli Dosya Yükleme (Magic Bytes):** Sadece dosya uzantısına (.pdf) bakılmaz, dosyanın `hex signature` (büyülü baytları) analiz edilerek sahte dosyalar engellenir.
+* **Dağıtık Hız Sınırlandırma (Distributed Rate Limiting - Redis):** Brute-force ve DDoS saldırılarına karşı her kullanıcıya IP/Username bazlı kota uygulanır. Sistem çoklu sunucuda çalışsa bile limitler Redis üzerinden senkronize edilir.
 
-### 👁️ 3. Gözlemlenebilirlik (Auditing)
-* **AOP (Aspect Oriented Programming):** Sisteme entegre edilen "Gizli Ajan" (AuditLoggingAspect), kritik işlemleri (Dosya Yükleme, Silme) çalışma anında yakalar.
-* **Denetim İzi:** Kimin, hangi IP adresinden, ne zaman, hangi işlemi yaptığı veritabanındaki `audit_logs` tablosuna kaydedilir.
+### ⚡ 3. Kurumsal Mimari (Enterprise Architecture)
+* **Signed URL ile Doğrudan İndirme (Offloading):** Kullanıcılar dosyaları Spring Boot üzerinden değil, MinIO üzerinden üretilen "5 Dakika Geçerli İmzalı Linkler (Pre-Signed URLs)" ile indirir. Backend sunucusunun RAM ve bant genişliği darboğazları (bottleneck) tamamen ortadan kaldırılmıştır.
+* **Asenkron İşlem (RabbitMQ):** Dosya yüklendiğinde, analiz veya bildirim gibi ağır işlemler ana HTTP thread'ini meşgul etmemesi için kuyruğa atılır.
+
+---
+
+## 📐 Sistem Tasarımı ve Mimari (System Design)
+
+### Neden Bu Teknolojiler? (Trade-offs)
+* **Neden PostgreSQL yerine MinIO (S3)?**
+  * *Sorun:* Büyük boyutlu dosyaları (BLOB) ilişkisel veritabanında saklamak; veritabanını şişirir, yedekleme (backup) sürelerini uzatır ve veritabanı RAM'ini gereksiz işgal eder.
+  * *Çözüm:* S3 uyumlu bir nesne depolama sunucusu olan MinIO kullanıldı. Veritabanı sadece dosyanın "metadatasını" (ID, isim, sahip), MinIO ise fiziksel byte'ları tutar. Signed URL mimarisi sadece S3 tabanlı sistemlerde mümkündür.
+* **Neden RAM Tabanlı Rate Limit (Bucket4j) yerine Redis?**
+  * *Sorun:* Local RAM tabanlı hız sınırları, uygulama 3 farklı Docker konteynerine (Horizontal Scaling) bölündüğünde işlevsiz kalır. Kullanıcı bir sunucuda limitini doldursa bile diğerinden istek atmaya devam edebilir.
+  * *Çözüm:* Tüm sunucuların ortak eriştiği, mikro saniyeler içinde cevap veren in-memory (RAM) tabanlı Redis veritabanı kullanılarak hız limitleri merkezileştirilmiştir.
+
+### Mimari Akış Diyagramı (Architecture Diagram)
+##
+<img width="1048" height="723" alt="image" src="https://github.com/user-attachments/assets/649dfb27-5a53-4284-b71c-ac2033c03af3" />
+
+---
+
+## 📊 Performans ve Yük Testi Raporu (K6 Load Test)
+
+Sistemin yüksek trafik altındaki dayanıklılığı **k6** kullanılarak test edilmiştir.
+* **Senaryo:** 50 saniye boyunca saniyede 100 eşzamanlı sanal kullanıcı (100 VUs) ile `/api/auth/login` ucuna taarruz.
+* **Optimizasyonlar:** 
+  * N+1 veritabanı sorgu problemi çözüldü (Login başına 4 SELECT sorgusu 1'e düşürüldü).
+  * HikariCP connection pool limiti 10'dan 50'ye çıkarıldı.
+  * Tomcat max-threads limiti 400'e çekildi.
+
+**Test Sonuçları:**
+* Toplam İşlenen İstek: **2428**
+* Başarılı İsteklerin Ortalama Dönüş Süresi (Latency): **~4.85 ms** (Mükemmel)
+* Başarısız İstek Oranı (Dropped): **%24.50**
+
+**Darboğaz (Bottleneck) Analizi:**
+I/O darboğazları çözülmesine rağmen alınan %24'lük HTTP 500/Timeout hataları incelendiğinde, sorunun veritabanı değil **CPU satürasyonu** olduğu tespit edilmiştir. Spring Security tarafından kullanılan **BCrypt** şifreleme algoritması, Brute-Force saldırılarını engellemek amacıyla *kasıtlı olarak* CPU'yu yoracak şekilde tasarlanmıştır. Saniyede 100 BCrypt işlemi yerel makinenin CPU kaynaklarını tüketmiştir. Bu bir "hata" değil, beklenen bir güvenlik önlemidir. Canlı ortamda bu darboğaz yatay ölçekleme (Horizontal Scaling) ile aşılabilir.
 
 ---
 
 ## 🛠️ Teknoloji Yığını (Tech Stack)
 
 * **Backend:** Java 17, Spring Boot 4.0.1
-* **Veritabanı:** PostgreSQL 15
+* **Veritabanı:** PostgreSQL 15 (Metadata & Yetkilendirme)
+* **Object Storage:** MinIO (S3 Compatible - Fiziksel Dosyalar)
+* **In-Memory Cache / Rate Limit:** Redis 7
+* **Message Broker:** RabbitMQ 3
 * **Güvenlik:** Spring Security 6, JJWT (0.11.5)
-* **Rate Limiting:** Bucket4j
 * **Dosya Analizi:** Apache Tika Core
-* **API Dokümantasyonu:** SpringDoc OpenAPI (Swagger UI)
+* **Yük Testi:** K6
 * **DevOps:** Docker, Docker Compose
-* **Test:** JUnit 5, Mockito, Postman
-
-* Not: Bu proje eğitim amaçlı olduğu için dosyalar veritabanında saklanmıştır. Production ortamı için AWS S3 entegrasyonu ve RabbitMQ ile asenkron dosya işleme mimarisi planlanmaktadır.
 
 ---
 
-## ⚙️ Kurulum ve Çalıştırma
+## ⚙️ Kurulum ve Çalıştırma (Docker Konteynerizasyonu)
 
-Projeyi çalıştırmak için iki yöntem vardır. En kolayı **Docker** kullanmaktır.
+Uygulama tam teşekküllü bir mikroservis altyapısına sahip olduğu için en sağlıklı çalışma yöntemi **Docker Compose**'dur.
 
-### Yöntem 1: Docker ile (Önerilen) 🐳
-Bilgisayarınızda Docker ve Docker Compose yüklü olmalıdır.
-
-1.  Repoyu klonlayın:
-    ```bash
-    git clone [https://github.com/mertmosman/secure-vault.git](https://github.com/mertmosman/secure-vault.git)
-    cd secure-vault
-    ```
-
-2.  Projeyi paketleyin ve konteynerleri ayağa kaldırın:
-    ```bash
-    # Önce Maven ile build alın (Testleri atlayarak hızlı build)
-    ./mvnw clean package -DskipTests
-
-    # Docker Compose ile başlatın
-    docker-compose up --build
-    ```
-
-3.  Uygulama **http://localhost:8081** adresinde çalışmaya başlayacaktır.
-
-### Yöntem 2: Lokal Kurulum (Manuel)
-1.  Bilgisayarınızda **PostgreSQL** kurulu olmalı ve `securevault_db` adında bir veritabanı oluşturulmalıdır.
-2.  `src/main/resources/application.properties` dosyasındaki veritabanı ayarlarını kendi lokal ayarlarınıza göre güncelleyin.
-3.  Uygulamayı çalıştırın:
-    ```bash
-    ./mvnw spring-boot:run
-    ```
+1. Bilgisayarınızda Docker Desktop'ın açık olduğundan emin olun.
+2. Repoyu klonlayıp kök dizine gidin:
+   ```bash
+   git clone [https://github.com/mertmosman/secure-vault.git](https://github.com/mertmosman/secure-vault.git)
+   cd secure-vault
+   
+```
+3. Tek komutla tüm orduyu (Spring Boot, Postgres, Redis, RabbitMQ, MinIO) ayağa kaldırın:
+   ```bash
+   docker compose up --build -d
+   ```
+4. Uygulama **http://localhost:8081** adresinde çalışmaya başlayacaktır.
 
 ---
 
@@ -87,89 +105,38 @@ Bilgisayarınızda Docker ve Docker Compose yüklü olmalıdır.
 Uygulama çalıştıktan sonra, tüm endpoint'leri görmek ve test etmek için tarayıcınızdan şu adrese gidin:
 
 👉 **http://localhost:8081/swagger-ui/index.html**
-<img width="914" height="927" alt="image" src="https://github.com/user-attachments/assets/a0b05a0d-2f0f-4c81-81a3-16627a0180f4" />
 
 **Temel Endpointler:**
 * `POST /api/auth/register` - Kayıt Olma
-* `POST /api/auth/login` - Giriş Yap (Token Al)
-* `POST /api/documents/upload` - Belge Yükle (Token Gerekli 🔒)
-* `GET /api/documents/{id}` - Belge Görüntüle (Sadece Sahibi Görebilir 🔒)
+* `POST /api/auth/login` - Giriş Yap (Access + Refresh Token Döner)
+* `POST /api/auth/refresh` - Süresi dolan token'ı yenile
+* `POST /api/documents/upload` - Belge Yükle (Rate Limiting Korumalı 🔒)
+* `GET /api/documents/{id}/download` - MinIO İmzalı İndirme Linki Üretir 🔒
 * `GET /api/users` - Kullanıcıları Listele (Sadece Admin 🔒)
 
 ---
-```
+
+## 📂 Dosya Hiyerarşisi
+```text
 secure-vault/
-├── .mvn/ wrapper/                  # (Maven Wrapper dosyaları)
+├── .mvn/ wrapper/
 ├── src/
 │   ├── main/
-│   │   ├── java/
-│   │   │   └── org/example/securevault/
-│   │   │       │
-│   │   │       ├── config/                      # ⚙️ KONFİGÜRASYON
-│   │   │       │   ├── AuditLoggingAspect.java  # (AOP - Gizli Ajan)
-│   │   │       │   ├── DataInitializer.java     # (Başlangıç verileri)
-│   │   │       │   ├── JwtAuthenticationFilter.java
-│   │   │       │   ├── OpenApiConfig.java       # (Swagger Ayarları)
-│   │   │       │   └── SecurityConfig.java      # (Ana Güvenlik Ayarı)
-│   │   │       │
-│   │   │       ├── controller/                  # 🎮 API UÇ NOKTALARI
-│   │   │       │   ├── AuthController.java
-│   │   │       │   ├── DocumentController.java
-│   │   │       │   └── UserController.java
-│   │   │       │
-│   │   │       ├── dto/                         # 📦 VERİ TRANSFER OBJELERİ
-│   │   │       │   ├── AuthResponse.java
-│   │   │       │   ├── LoginRequest.java
-│   │   │       │   └── RegisterRequest.java
-│   │   │       │
-│   │   │       ├── exception/                   # 🚨 HATA YÖNETİMİ (YENİ EKLENDİ)
-│   │   │       │   └── GlobalExceptionHandler.java
-│   │   │       │
-│   │   │       ├── model/                       # 🗄️ VERİTABANI VARLIKLARI
-│   │   │       │   ├── AuditLog.java
-│   │   │       │   ├── Document.java
-│   │   │       │   └── User.java
-│   │   │       │
-│   │   │       ├── repository/                  # 💾 VERİ ERİŞİM KATMANI
-│   │   │       │   ├── AuditLogRepository.java
-│   │   │       │   ├── DocumentRepository.java
-│   │   │       │   └── UserRepository.java
-│   │   │       │
-│   │   │       ├── service/                     # 🧠 İŞ MANTIĞI
-│   │   │       │   ├── CustomUserDetailsService.java
-│   │   │       │   ├── DocumentService.java
-│   │   │       │   ├── JwtService.java
-│   │   │       │   ├── RateLimitingService.java
-│   │   │       │   └── UserService.java
-│   │   │       │
-│   │   │       ├── validation/                  # ✅ DOĞRULAMA
-│   │   │       │   └── FileValidator.java       # (Magic Bytes/Tika kontrolü)
-│   │   │       │
-│   │   │       └── SecureVaultApplication.java  # 🚀 BAŞLATICI
-│   │   │
+│   │   ├── java/org/example/securevault/
+│   │   │   ├── config/             # Güvenlik, Swagger ve Aspect Ayarları
+│   │   │   ├── controller/         # REST API Uç Noktaları
+│   │   │   ├── dto/                # Veri Transfer Objeleri
+│   │   │   ├── exception/          # Global Hata Yönetimi
+│   │   │   ├── model/              # User, Document, AuditLog, RefreshToken
+│   │   │   ├── repository/         # Spring Data JPA Arayüzleri
+│   │   │   ├── service/            # İş Mantığı (MinIO, Redis, JWT Servisleri)
+│   │   │   └── validation/         # Magic Bytes (Tika) Kontrolü
 │   │   └── resources/
-│   │       └── application.properties           # 🔧 AYAR DOSYASI
-│   │
-│   └── test/
-│       └── java/
-│           └── org/example/securevault/
-│               ├── service/
-│               │   └── JwtServiceTest.java      # 🧪 BİRİM TESTİ
-│               └── SecureVaultApplicationTests.java
-│
-├── target/                     # (Derleme çıktıları - dokunma)
-├── uploads/                    # (Lokal test için dosya yükleme alanı - opsiyonel)
-├── .gitignore                  # (Git ayar dosyası)
-├── docker-compose.yml          # 🐳 DOCKER ORKESTRA (Ana dizinde olmalı!)
-├── Dockerfile                  # 🐳 DOCKER İMAJ (Ana dizinde olmalı!)
-├── mvnw                        # (Maven çalıştırıcı)
-├── mvnw.cmd                    # (Maven çalıştırıcı - Windows)
-├── pom.xml                     # 📋 KÜTÜPHANELER
-└── README.md                   # 📖 PROJE DOKÜMANTASYONU
+│   │       └── application.properties
+│   └── test/                       # JUnit ve Mockito Birim Testleri
+│       └── load-test.js            # K6 Stres Testi Senaryosu
+├── docker-compose.yml              # Tüm servislerin orkestrasyonu
+├── Dockerfile                      # Spring Boot için imaj oluşturucu
+├── pom.xml                         # Kütüphane Bağımlılıkları
+└── README.md                       # Mimari Dokümantasyon
 ```
-## 🧪 Test Süreci
-
-### Unit Testler
-Servis katmanının (özellikle JWT ve yetkilendirme mantığının) doğruluğu JUnit testleri ile güvence altına alınmıştır.
-```bash
-./mvnw test
