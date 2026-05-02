@@ -44,7 +44,7 @@ Bu proje, "Security First" (Öncelikle Güvenlik) ve "High Performance" (Yüksek
 
 ### Mimari Akış Diyagramı (Architecture Diagram)
 ##
-<img width="1048" height="723" alt="image" src="https://github.com/user-attachments/assets/649dfb27-5a53-4284-b71c-ac2033c03af3" />
+<img width="524" height="360" alt="image" src="https://github.com/user-attachments/assets/649dfb27-5a53-4284-b71c-ac2033c03af3" />
 
 ---
 
